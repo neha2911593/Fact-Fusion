@@ -1,0 +1,35 @@
+# Core ML and NLP libraries
+torch
+transformers
+datasets
+scikit-learn
+sentencepiece
+
+# Explainable AI
+lime
+
+# Data retrieval and APIs
+wikipedia
+requests
+beautifulsoup4
+
+# Web interfaces
+gradio
+streamlit
+
+# Optional for advanced search and retrieval
+langchain
+openai
+wikipedia-api
+
+# Utilities
+python-dotenv
+numpy
+pandas
+
+
+
+fastapi
+uvicorn
+requests
+wikipedia
