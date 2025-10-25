@@ -1,9 +1,9 @@
-import gradio as gr
+import gradio as gr  # Keep this import (unused now, but harmless)
 from fastapi import FastAPI, Request
-from model.classifier_model import classify_claim
-from retriever.wiki_retriever import get_evidence
-from model.nli_model import verify_claim
-from model.explain_lime import explain_with_lime
+from classifier_model import classify_claim
+from wiki_retriever import get_evidence
+from nli_model import verify_claim
+from explain_lime import explain_with_lime
 
 # ---------------- PIPELINE ------------------------
 def fact_fusion_pipeline(claim):
@@ -46,8 +46,8 @@ async def predict(request: Request):
     except Exception as e:
         return {"error": str(e)}
 
-# ---------------- GRADIO UI ----------------
-
+# ---------------- GRADIO UI ---------------- (Commented out to avoid conflicts)
+"""
 # ---------------- GRADIO UI for Gradio 5+ ----------------
 with gr.Blocks() as demo:
     gr.Markdown("## 🌿 Fact Fusion: Climate & Weather Edu-Bot")
@@ -71,3 +71,9 @@ with gr.Blocks() as demo:
 
 if __name__ == "__main__":
     demo.launch(server_name="127.0.0.1", server_port=7860)
+"""
+
+# New FastAPI-only runner
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)

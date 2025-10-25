@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 
-BACKEND_URL = "http://127.0.0.1:7860/predict"
+BACKEND_URL = "http://127.0.0.1:8000/predict"
 
 st.set_page_config(page_title="Fact Fusion: Climate & Weather Edu-Bot", layout="centered")
 st.title("🌿 Fact Fusion: Climate & Weather Edu-Bot")
