@@ -1,49 +1,68 @@
 import streamlit as st
 import requests
 
+# Make sure this matches your backend port
 BACKEND_URL = "http://127.0.0.1:8000/predict"
 
-st.set_page_config(page_title="Fact Fusion: Climate & Weather Edu-Bot", layout="centered")
-st.title("🌿 Fact Fusion: Climate & Weather Edu-Bot")
-st.write("Ask me about climate, weather, or environment facts! I’ll check if it’s true and show you evidence.")
+st.set_page_config(page_title="Fact Fusion: Climate & Fact Checker", layout="centered")
 
-user_input = st.text_input("Enter your claim or question:")
+st.title("🌍 Fact Fusion: Climate, Weather & Environment Fact Checker")
+st.write("Enter any claim about climate, weather, or the environment. I'll verify it using:")
+st.markdown("""
+- 🌤 **Roberta NLI Model (Fact Classification)**  
+- 📚 **Wikipedia + NASA + DuckDuckGo Evidence Retrieval**  
+- 🧠 **LIME Explainability**  
+""")
 
-if st.button("Check Fact"):
-    if user_input:
-        with st.spinner("Analyzing your claim... please wait ⏳"):
+user_input = st.text_input("Enter your claim:")
+
+if st.button("Verify Claim"):
+    if user_input.strip():
+        with st.spinner("Processing your claim... 🔍"):
             try:
-                # ✅ FIX: send 'claim' field instead of 'data'
                 response = requests.post(
                     BACKEND_URL,
-                    json={"claim": user_input},  # ✅ correct field
-                    timeout=600
+                    json={"claim": user_input},
+                    timeout=1000
                 )
 
                 if response.status_code == 200:
                     result = response.json()
 
-                    # Backend sends {"data": [ { ..results.. } ]}
+                    # ----------------------------
+                    # Expected Format:
+                    # { "data": [{ "Prediction": "...", "Evidence": "...", ... }] }
+                    # ----------------------------
                     if "data" in result and len(result["data"]) > 0:
                         output = result["data"][0]
 
-                        st.subheader("Prediction:")
-                        st.write(output.get("Prediction", "N/A"))
+                        # PREDICTION
+                        st.subheader("📌 Claim Classification (Roberta-NLI)")
+                        st.success(output.get("Prediction", "Unavailable"))
 
-                        st.subheader("Evidence from Wikipedia/NASA:")
-                        st.write(output.get("Evidence", "N/A"))
+                        # EVIDENCE
+                        st.subheader("📚 Retrieved Evidence")
+                        st.write(output.get("Evidence", "No evidence found."))
 
-                        st.subheader("NLI Verification:")
-                        st.write(output.get("NLI Result", "N/A"))
+                        # NLI VERIFICATION
+                        st.subheader("🧠 NLI Verification Result")
+                        st.info(output.get("NLI Result", "Unavailable"))
 
-                        st.subheader("Explainability (LIME):")
-                        st.components.v1.html(output.get("Explanation (LIME)", ""), height=400, scrolling=True)
+                        # LIME EXPLANATION
+                        st.subheader("🔍 Explainability (LIME)")
+                        lime_html = output.get("Explanation (LIME)", "")
+                        st.components.v1.html(lime_html, height=450, scrolling=True)
+
                     else:
-                        st.error("Unexpected backend response format.")
+                        st.error("❌ Invalid backend response format.")
+
                 else:
-                    st.error(f"Backend returned HTTP {response.status_code}: {response.text}")
+                    st.error(f"⚠️ Backend Error {response.status_code}: {response.text}")
 
             except requests.exceptions.ConnectionError:
-                st.error("⚠️ Could not connect to backend. Please ensure `backend.py` is running first.")
+                st.error("🚫 Backend not reachable. Start backend.py first!")
             except Exception as e:
-                st.error(f"An unexpected error occurred: {e}")
+                st.error(f"Unexpected error: {e}")
+    else:
+        st.warning("Please enter a claim before clicking the button.")
+
