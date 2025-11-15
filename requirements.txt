@@ -1,35 +1,24 @@
-# Core ML and NLP libraries
+# Core ML
 torch
 transformers
-datasets
 scikit-learn
-sentencepiece
-
-# Explainable AI
-lime
-
-# Data retrieval and APIs
-wikipedia
-requests
-beautifulsoup4
-
-# Web interfaces
-gradio
-streamlit
-
-# Optional for advanced search and retrieval
-langchain
-openai
-wikipedia-api
-
-# Utilities
-python-dotenv
 numpy
 pandas
 
+# Explainability (LIME)
+lime
 
+# Evidence retrieval
+requests
+beautifulsoup4
+wikipedia-api
+duckduckgo-search
 
+# Interfaces (Frontend + Backend)
+gradio
+streamlit
 fastapi
 uvicorn
-requests
-wikipedia
+
+# Utilities
+python-dotenv
