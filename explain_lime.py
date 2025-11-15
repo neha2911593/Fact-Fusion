@@ -1,27 +1,35 @@
 from lime.lime_text import LimeTextExplainer
-from transformers import pipeline
+from models import nli_model     # shared global model
 import numpy as np
 
-# Load model once
-model = pipeline("text-classification", model="distilbert-base-uncased-finetuned-sst-2-english")
-explainer = LimeTextExplainer(class_names=["False", "True"])
+# LIME class names in 3-class order
+class_names = ["False", "Uncertain", "True"]
+explainer = LimeTextExplainer(class_names=class_names)
 
 def explain_with_lime(text):
     def predict_proba(texts):
-        # texts is list of strings → run model on each
-        results = model(texts)
-        # Convert POSITIVE → [prob_false, prob_true], NEGATIVE → [prob_true, prob_false]
+        results = nli_model(texts)
+
         probs = []
         for r in results:
-            score = r['score']
-            if r['label'] == 'POSITIVE':
-                probs.append([1 - score, score])
-            else:
-                probs.append([score, 1 - score])
+            score = r["score"]
+            label = r["label"]
+
+            # Convert NLI label → probability vector
+            if label == "CONTRADICTION":
+                probs.append([score, (1-score)/2, (1-score)/2])
+
+            elif label == "NEUTRAL":
+                probs.append([(1-score)/2, score, (1-score)/2])
+
+            else:  # ENTAILMENT
+                probs.append([(1-score)/2, (1-score)/2, score])
+
         return np.array(probs)
-    
+
     try:
-        exp = explainer.explain_instance(text, predict_proba, num_features=8)
+        exp = explainer.explain_instance(text, predict_proba, num_features=10)
         return exp.as_html()
+
     except Exception as e:
         return f"<p style='color:red;'>LIME explanation failed: {str(e)}</p>"
