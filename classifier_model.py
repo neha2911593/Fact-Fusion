@@ -12,4 +12,3 @@ def classify_claim(claim):
 
     confidence = round(result['score'] * 100, 2)
     return label, confidence
-
