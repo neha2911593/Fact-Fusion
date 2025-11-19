@@ -1,24 +1,31 @@
 # Core ML
-torch
-transformers
-scikit-learn
-numpy
-pandas
+torch>=2.0.0
+transformers>=4.30.0
+scikit-learn>=1.3.0
+numpy>=1.24.0
+pandas>=2.0.0
+streamlit
 
-# Explainability (LIME)
-lime
+# Explainability (SHAP - Much faster than LIME)
+shap>=0.42.0
+# Optional: For Integrated Gradients method
+captum>=0.6.0
 
 # Evidence retrieval
-requests
-beautifulsoup4
-wikipedia-api
-duckduckgo-search
+requests>=2.31.0
+beautifulsoup4>=4.12.0
 
-# Interfaces (Frontend + Backend)
-gradio
-streamlit
-fastapi
-uvicorn
+# Backend & Frontend
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+streamlit>=1.25.0
 
 # Utilities
-python-dotenv
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# Optional but recommended
+# For better HTML rendering
+matplotlib>=3.7.0
+# For async performance
+aiohttp>=3.8.0
