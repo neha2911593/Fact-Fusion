@@ -1,10 +1,90 @@
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
 import torch
 
-# Load RoBERTa model for NLI
-model_name = "roberta-large-mnli"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForSequenceClassification.from_pretrained(model_name)
+# Load RoBERTa-MNLI for evidence-based verification
+mnli_model_name = "roberta-large-mnli"
+mnli_tokenizer = AutoTokenizer.from_pretrained(mnli_model_name)
+mnli_model = AutoModelForSequenceClassification.from_pretrained(mnli_model_name)
+
+# Load Zero-Shot model for claim classification (without evidence)
+zero_shot_classifier = pipeline(
+    "zero-shot-classification",
+    model="facebook/bart-large-mnli",
+    device=0 if torch.cuda.is_available() else -1
+)
+
+DEBUG = False
+
+def _debug_print(message):
+    """Print debug messages if DEBUG is enabled"""
+    if DEBUG:
+        print(f"[NLI DEBUG] {message}")
+
+
+def classify_claim_simple(claim: str):
+    """
+    Simplified version - just True/False categories (no Uncertain option)
+    Uses NLI-style reasoning with scientific context
+    
+    Args:
+        claim: The claim text to classify
+        
+    Returns:
+        tuple: (classification_label, confidence_score)
+    """
+    # Create premise with scientific/factual context
+    premise_true = "Scientific evidence and established facts demonstrate that"
+    premise_false = "Scientific evidence and established facts show the opposite of"
+    
+    # Use MNLI model directly for better accuracy
+    inputs_true = mnli_tokenizer(
+        premise_true,
+        claim,
+        return_tensors="pt",
+        truncation=True,
+        max_length=512
+    )
+    
+    inputs_false = mnli_tokenizer(
+        premise_false,
+        claim,
+        return_tensors="pt",
+        truncation=True,
+        max_length=512
+    )
+    
+    with torch.no_grad():
+        outputs_true = mnli_model(**inputs_true)
+        outputs_false = mnli_model(**inputs_false)
+    
+    probs_true = torch.softmax(outputs_true.logits, dim=1)
+    probs_false = torch.softmax(outputs_false.logits, dim=1)
+    
+    # Get entailment scores (index 2)
+    entailment_true = probs_true[0][2].item()
+    entailment_false = probs_false[0][2].item()
+    
+    # Also check contradiction scores (index 0) 
+    contradiction_true = probs_true[0][0].item()
+    contradiction_false = probs_false[0][0].item()
+    
+    _debug_print(f"True entailment: {entailment_true:.4f}, False entailment: {entailment_false:.4f}")
+    _debug_print(f"True contradiction: {contradiction_true:.4f}, False contradiction: {contradiction_false:.4f}")
+    
+    # Combined scoring - true if scientific evidence entails it
+    # False if scientific evidence contradicts it or entails its opposite
+    score_for_true = entailment_true + contradiction_false
+    score_for_false = entailment_false + contradiction_true
+    
+    if score_for_true > score_for_false:
+        classification = "True"
+        confidence = (score_for_true / (score_for_true + score_for_false)) * 100
+    else:
+        classification = "False"
+        confidence = (score_for_false / (score_for_true + score_for_false)) * 100
+    
+    return classification, confidence
+
 
 def classify_claim(claim: str):
     """
@@ -16,49 +96,44 @@ def classify_claim(claim: str):
     Returns:
         tuple: (classification_label, confidence_score)
     """
-    # Define hypothesis templates
-    hypothesis_true = f"This statement is scientifically accurate: {claim}"
-    hypothesis_false = f"This statement is scientifically false: {claim}"
+    _debug_print(f"classify_claim (zero-shot) called with: {claim[:100]}")
     
-    # Tokenize inputs
-    inputs_true = tokenizer(claim, hypothesis_true, return_tensors="pt", truncation=True, max_length=512)
-    inputs_false = tokenizer(claim, hypothesis_false, return_tensors="pt", truncation=True, max_length=512)
+    candidate_labels = [
+        "This statement is factually correct and scientifically accurate",
+        "This statement is factually incorrect or false",
+        "This statement is uncertain or unverifiable"
+    ]
     
-    # Get predictions
-    with torch.no_grad():
-        outputs_true = model(**inputs_true)
-        outputs_false = model(**inputs_false)
+    result = zero_shot_classifier(
+        claim,
+        candidate_labels,
+        multi_label=False
+    )
     
-    # Apply softmax to get probabilities
-    probs_true = torch.softmax(outputs_true.logits, dim=1)
-    probs_false = torch.softmax(outputs_false.logits, dim=1)
+    top_label = result['labels'][0]
+    top_score = result['scores'][0]
     
-    # Get entailment probabilities (index 2 is entailment in RoBERTa-MNLI)
-    entailment_true = probs_true[0][2].item()
-    entailment_false = probs_false[0][2].item()
+    _debug_print(f"Zero-shot scores: {list(zip(result['labels'], result['scores']))}")
     
-    # Decision logic with adjusted thresholds
-    TRUE_THRESHOLD = 0.50
-    FALSE_THRESHOLD = 0.50
-    CONFIDENCE_MARGIN = 0.10
-    
-    # If true score is higher and above threshold
-    if entailment_true > entailment_false + CONFIDENCE_MARGIN and entailment_true > TRUE_THRESHOLD:
-        return "True", entailment_true * 100  # Convert to percentage
-    
-    # If false score is higher and above threshold
-    elif entailment_false > entailment_true + CONFIDENCE_MARGIN and entailment_false > FALSE_THRESHOLD:
-        return "False", entailment_false * 100
-    
-    # If scores are similar or both below threshold
+    if "correct" in top_label.lower():
+        classification = "True"
+    elif "incorrect" in top_label.lower() or "false" in top_label.lower():
+        classification = "False"
     else:
-        max_confidence = max(entailment_true, entailment_false)
-        return "Uncertain", max_confidence * 100
+        classification = "Uncertain"
+    
+    if top_score < 0.40 and classification != "Uncertain":
+        classification = "Uncertain"
+    
+    confidence = top_score * 100
+    
+    _debug_print(f"classify_claim result: {classification} ({confidence:.2f}%)")
+    return classification, confidence
 
 
 def verify_with_evidence(claim: str, evidence: str):
     """
-    Verify a claim against retrieved evidence using NLI
+    Verify a claim against retrieved evidence using RoBERTa-MNLI
     
     Args:
         claim: The claim to verify
@@ -67,13 +142,17 @@ def verify_with_evidence(claim: str, evidence: str):
     Returns:
         tuple: (verification_label, confidence_score as percentage)
     """
-    # Truncate evidence if too long (keep first 500 words)
+    _debug_print(f"verify_with_evidence (RoBERTa-MNLI) called")
+    _debug_print(f"Claim: {claim[:100]}")
+    _debug_print(f"Evidence: {evidence[:150]}...")
+    
+    # Truncate evidence if too long
     evidence_words = evidence.split()
     if len(evidence_words) > 500:
         evidence = " ".join(evidence_words[:500]) + "..."
     
     # Tokenize the claim-evidence pair
-    inputs = tokenizer(
+    inputs = mnli_tokenizer(
         evidence,
         claim,
         return_tensors="pt",
@@ -84,7 +163,7 @@ def verify_with_evidence(claim: str, evidence: str):
     
     # Get model predictions
     with torch.no_grad():
-        outputs = model(**inputs)
+        outputs = mnli_model(**inputs)
     
     # Apply softmax to get probabilities
     probs = torch.softmax(outputs.logits, dim=1)
@@ -94,35 +173,23 @@ def verify_with_evidence(claim: str, evidence: str):
     neutral_score = probs[0][1].item()
     entailment_score = probs[0][2].item()
     
-    # Adjusted thresholds for better classification
-    ENTAILMENT_THRESHOLD = 0.45
-    CONTRADICTION_THRESHOLD = 0.45
-    NEUTRAL_MARGIN = 0.15
+    _debug_print(f"MNLI scores - E: {entailment_score:.4f}, C: {contradiction_score:.4f}, N: {neutral_score:.4f}")
     
-    # Get the highest score
-    max_score = max(entailment_score, contradiction_score, neutral_score)
+    # Simply pick the highest score
+    if entailment_score >= contradiction_score and entailment_score >= neutral_score:
+        result = ("True", entailment_score * 100)
+    elif contradiction_score > entailment_score and contradiction_score >= neutral_score:
+        result = ("False", contradiction_score * 100)
+    else:
+        result = ("Uncertain", neutral_score * 100)
     
-    # Decision logic with improved sensitivity
-    if entailment_score == max_score:
-        if entailment_score > ENTAILMENT_THRESHOLD:
-            # Check if neutral is close to entailment
-            if neutral_score > entailment_score - NEUTRAL_MARGIN:
-                return "Uncertain", neutral_score * 100
-            return "True", entailment_score * 100
-        else:
-            return "Uncertain", entailment_score * 100
-    
-    elif contradiction_score == max_score:
-        if contradiction_score > CONTRADICTION_THRESHOLD:
-            # Check if neutral is close to contradiction
-            if neutral_score > contradiction_score - NEUTRAL_MARGIN:
-                return "Uncertain", neutral_score * 100
-            return "False", contradiction_score * 100
-        else:
-            return "Uncertain", contradiction_score * 100
-    
-    else:  # neutral_score is highest
-        return "Uncertain", neutral_score * 100
+    _debug_print(f"verify_with_evidence result: {result[0]} ({result[1]:.2f}%)")
+    return result
+
+
+def verify_claim(claim: str, evidence: str):
+    """Alias for verify_with_evidence for backward compatibility"""
+    return verify_with_evidence(claim, evidence)
 
 
 def get_nli_scores(claim: str, evidence: str):
@@ -136,7 +203,7 @@ def get_nli_scores(claim: str, evidence: str):
     Returns:
         dict: Dictionary containing all three scores
     """
-    inputs = tokenizer(
+    inputs = mnli_tokenizer(
         evidence,
         claim,
         return_tensors="pt",
@@ -146,36 +213,38 @@ def get_nli_scores(claim: str, evidence: str):
     )
     
     with torch.no_grad():
-        outputs = model(**inputs)
+        outputs = mnli_model(**inputs)
     
     probs = torch.softmax(outputs.logits, dim=1)
     
-    return {
+    scores = {
         "contradiction": round(probs[0][0].item(), 4),
         "neutral": round(probs[0][1].item(), 4),
         "entailment": round(probs[0][2].item(), 4)
     }
-
-
-# For backward compatibility - some code might call verify_claim
-def verify_claim(claim: str, evidence: str):
-    """Alias for verify_with_evidence for backward compatibility"""
-    return verify_with_evidence(claim, evidence)
+    
+    _debug_print(f"get_nli_scores: {scores}")
+    return scores
 
 
 # Example usage and testing
 if __name__ == "__main__":
-    test_claims = [
-        "Global temperatures have increased significantly over the past century",
-        "The Earth is flat",
-        "Renewable energy is becoming more affordable",
-    ]
+    print("Testing NLI Model Functions")
+    print("="*80)
     
-    print("Testing NLI Model with Adjusted Thresholds\n")
-    print("=" * 60)
+    test_claim = "Climate change is caused by human activities"
+    test_evidence = "According to NASA and IPCC reports, human activities are the dominant cause of observed climate change since the mid-20th century."
     
-    for claim in test_claims:
-        classification, confidence = classify_claim(claim)
-        print(f"\nClaim: {claim}")
-        print(f"Classification: {classification} ({confidence:.2f}% confidence)")
-        print("-" * 60)
+    print("\n1. Testing classify_claim_simple (True/False only):")
+    label, conf = classify_claim_simple(test_claim)
+    print(f"   Result: {label} ({conf:.2f}%)")
+    
+    print("\n2. Testing classify_claim (with Uncertain option):")
+    label, conf = classify_claim(test_claim)
+    print(f"   Result: {label} ({conf:.2f}%)")
+    
+    print("\n3. Testing verify_with_evidence:")
+    label, conf = verify_with_evidence(test_claim, test_evidence)
+    print(f"   Result: {label} ({conf:.2f}%)")
+    
+    print("\n" + "="*80)
