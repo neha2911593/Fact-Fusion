@@ -1,14 +1,30 @@
-from models import nli_model  # shared model
+from nli_model import classify_claim_simple as nli_classify_claim
+from nli_model import verify_with_evidence as nli_verify_evidence
 
 def classify_claim(claim):
-    result = nli_model(claim)[0]
+    """
+    Classify a claim using the proper NLI model function (zero-shot)
+    
+    Args:
+        claim: The claim text to classify
+        
+    Returns:
+        tuple: (label, confidence)
+    """
+    label, confidence = nli_classify_claim(claim)
+    return label, round(confidence, 2)
 
-    if result['label'] == "ENTAILMENT":
-        label = "True"
-    elif result['label'] == "CONTRADICTION":
-        label = "False"
-    else:
-        label = "Uncertain"
 
-    confidence = round(result['score'] * 100, 2)
-    return label, confidence
+def verify_claim_with_evidence(claim, evidence):
+    """
+    Verify a claim against evidence using NLI
+    
+    Args:
+        claim: The claim to verify
+        evidence: The evidence text from search results
+        
+    Returns:
+        tuple: (label, confidence)
+    """
+    label, confidence = nli_verify_evidence(claim, evidence)
+    return label, round(confidence, 2)
