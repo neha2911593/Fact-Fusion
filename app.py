@@ -42,6 +42,16 @@ st.markdown("""
     .stButton>button:hover {
         background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
     }
+    /* Fix for HTML rendering in expander */
+    .streamlit-expanderContent {
+        overflow-x: auto;
+    }
+    /* Ensure HTML content displays properly */
+    iframe {
+        border: none;
+        width: 100%;
+        min-height: 400px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -49,13 +59,13 @@ st.markdown("""
 st.markdown("""
     <div class="main-header">
         <h1>🌍 Fact Fusion</h1>
-        <p>Automated Climate & Weather Misinformation Detection</p>
+        <p>Automated Environment Misinformation Detection</p>
     </div>
 """, unsafe_allow_html=True)
 
 # Example claims
 EXAMPLE_CLAIMS = [
-    "Carbon dioxide levels have increased by 50% since pre-industrial times",
+    "Earth's temperature currently increased by 1.1 degree celsius",
     "Arctic sea ice is melting at an unprecedented rate",
     "Renewable energy cannot meet global energy demands",
     "Climate change is causing more frequent hurricanes",
@@ -63,6 +73,7 @@ EXAMPLE_CLAIMS = [
     "Fossil fuels are the primary driver of global warming",
     "Sea levels are rising due to melting ice caps",
     "Solar panels are more harmful to the environment than coal",
+    "Global warming is caused by human activities"
 ]
 
 # Two columns layout
@@ -165,17 +176,42 @@ if verify_button and claim.strip():
                     st.warning(f"**{nli_result}**")
                     st.warning("⚠️ The evidence is INCONCLUSIVE regarding the claim")
                 
-                # Explanation
+                # Explanation - FIXED RENDERING
                 explanation_html = result.get("Explanation (SHAP)", "")
                 if explanation_html and "failed" not in explanation_html.lower():
                     st.subheader("🔍 Word Importance Analysis")
                     st.markdown("**Words colored by importance:**")
-                    st.caption("High importance (red) to Low importance (gray)")
+                    st.caption("Shows which words most influenced the classification")
                     
                     with st.expander("View Word Importance", expanded=True):
-                        st.markdown(explanation_html, unsafe_allow_html=True)
+                        # Use components.html for better rendering
+                        import streamlit.components.v1 as components
+                        
+                        # Wrap HTML for proper rendering
+                        full_html = f"""
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <meta charset="utf-8">
+                            <style>
+                                body {{
+                                    margin: 0;
+                                    padding: 10px;
+                                    font-family: Arial, sans-serif;
+                                }}
+                            </style>
+                        </head>
+                        <body>
+                            {explanation_html}
+                        </body>
+                        </html>
+                        """
+                        
+                        components.html(full_html, height=500, scrolling=True)
                     
-                    st.caption("Method: SHAP - Shows which words most influenced the classification")
+                    st.caption("Method: SHAP/Attention - Shows which words most influenced the classification")
+                else:
+                    st.info("ℹ️ Explanation not available for this claim")
                 
                 # Performance Metrics
                 with st.expander("⚡ Performance Metrics"):
@@ -233,13 +269,14 @@ with st.sidebar:
     
     ### 📚 Multi-Source Evidence
     Retrieves data from:
+    - NASA Climate Data
+    - NOAA NCEI
+    - IPCC Reports
     - Wikipedia
     - DuckDuckGo
-    - NASA, NOAA (via search)
-    - Serper API (if configured)
     
     ### 🔍 Explainability
-    **SHAP** word importance analysis
+    **SHAP/Attention** word importance analysis
     
     ### ✅ Verification Process
     1. Enter your claim
